@@ -63,7 +63,7 @@ class DriverPosition:
     y: float = 700.0
     z: float = 300.0
 
-def generate_windshield_points(n_width=250, n_height=200):
+def generate_windshield_points(n_width=25, n_height=20):
     """生成挡风玻璃密集点阵"""
     u = np.linspace(0, 1, n_width)
     v = np.linspace(0, 1, n_height)
@@ -72,8 +72,11 @@ def generate_windshield_points(n_width=250, n_height=200):
     X = (1-U)*(1-V)*TL[0] + U*(1-V)*TR[0] + U*V*BR[0] + (1-U)*V*BL[0]
     Y = (1-U)*(1-V)*TL[1] + U*(1-V)*TR[1] + U*V*BR[1] + (1-U)*V*BL[1]
     Z = (1-U)*(1-V)*TL[2] + U*(1-V)*TR[2] + U*V*BR[2] + (1-U)*V*BL[2]
+    # Z=np.sqrt(1-X**2-Y**2)
     Y += 40 * (1 - (2*U - 1)**2) * (1 - (2*V - 1)**2)  # 外凸曲率
-    return np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+    # return np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+    
+    return [[x,y,z] for x,y,z in zip(X.reshape(-1),Y.reshape(-1),Z.reshape(-1))]
 
 def generate_side_window_points(side='left', n_h=150, n_v=120):
     """生成侧窗密集点阵（梯形模拟）"""
@@ -83,14 +86,14 @@ def generate_side_window_points(side='left', n_h=150, n_v=120):
     
     if side == 'left':
         LT, LB = [-620, 900, 850], [-720, 1260, 220]
-        LTH, LBH = [-620, 300, 850], [-720, 300, 220]
+        LTH, LBH = [-620, 700, 850], [-720, 700, 220]
         X = (1-U)*(1-V)*LT[0] + U*(1-V)*LTH[0] + U*V*LBH[0] + (1-U)*V*LB[0]
         Y = (1-U)*(1-V)*LT[1] + U*(1-V)*LTH[1] + U*V*LBH[1] + (1-U)*V*LB[1]
         Z = (1-U)*(1-V)*LT[2] + U*(1-V)*LTH[2] + U*V*LBH[2] + (1-U)*V*LB[2]
 
     else:
         RT, RB = [620, 900, 850], [720, 1260, 220]
-        RTH, RBH = [620, 300, 850], [720, 300, 220]
+        RTH, RBH = [620, 700, 850], [720, 700, 220]
         X = (1-U)*(1-V)*RT[0] + U*(1-V)*RTH[0] + U*V*RBH[0] + (1-U)*V*RB[0]
         Y = (1-U)*(1-V)*RT[1] + U*(1-V)*RTH[1] + U*V*RBH[1] + (1-U)*V*RB[1]
         Z = (1-U)*(1-V)*RT[2] + U*(1-V)*RTH[2] + U*V*RBH[2] + (1-U)*V*RB[2]
@@ -109,7 +112,7 @@ def generate_mirror_points(center, width, height, n=5):
 
 # 生成所有密集点
 WINDSHIELD_DENSE = generate_windshield_points()
-WINDSHIELD_BOUNDARY = np.array([WINDSHIELD_DENSE[0], WINDSHIELD_DENSE[249], WINDSHIELD_DENSE[-1], WINDSHIELD_DENSE[-250]])
+WINDSHIELD_BOUNDARY = np.array([WINDSHIELD_DENSE[0], WINDSHIELD_DENSE[24], WINDSHIELD_DENSE[-1], WINDSHIELD_DENSE[-25]])
 WINDSHIELD_BOUNDARY_CLOSED = np.vstack([WINDSHIELD_BOUNDARY, WINDSHIELD_BOUNDARY[0]])
 
 LEFT_WIN_DENSE = generate_side_window_points('left')
@@ -152,6 +155,10 @@ class InteractiveFOVViewer:
         self.ax.set_zlim(0, 1000)
 
         # 3D 渲染
+        self.ax.plot_wireframe(np.array([[float(item[0])] for item in WINDSHIELD_DENSE]).reshape(20, -1),
+                                np.array([[float(item[1])] for item in WINDSHIELD_DENSE]).reshape(20, -1),
+                                np.array([[float(item[2])] for item in WINDSHIELD_DENSE]).reshape(20, -1), 
+                                color= 'blue', alpha=0.6, linewidth=1.2)
         self.ax.plot(WINDSHIELD_BOUNDARY_CLOSED[:,0], WINDSHIELD_BOUNDARY_CLOSED[:,1], WINDSHIELD_BOUNDARY_CLOSED[:,2], 'c-', linewidth=2, label='挡风玻璃')
         # self.ax.add_collection3d(Poly3DCollection([list(zip(WINDSHIELD_BOUNDARY[:,0], WINDSHIELD_BOUNDARY[:,1], WINDSHIELD_BOUNDARY[:,2]))], facecolors='cyan', alpha=0.12))
         
@@ -259,19 +266,28 @@ class InteractiveFOVViewer:
                     idx = hull.vertices
                     az_c = np.concatenate([az[idx], [az[idx[0]]]])
                     el_c = np.concatenate([el[idx], [el[idx[0]]]])
+                    if os.path.exists("convex.txt"):
+                        os.remove("convex.txt")
+                    with open("convex.txt","w") as of:
+                        for az_,el_ in zip(az_c,el_c):
+                            of.write(str(f"{float(az_)},{float(el_)}\n"))
                     # self.ax2.fill(az_c, el_c, color=col, alpha=alp, label=lab)
                     self.ax2.plot(az_c, el_c, color=col, lw=1.5)
                 except: pass
-
+        self.ax2.plot(az_ws.reshape(20, -1), el_ws.reshape(20, -1), 'b-', linewidth=1, alpha=0.6)# 垂直线
+        self.ax2.plot(az_ws.reshape(20, -1).T, el_ws.reshape(20, -1).T, 'b-', linewidth=1, alpha=0.6)# 水平线
         plot_hull(az_ws, el_ws, '#e94560', '前向视野', 0.25)
         # plot_hull(az_lm, el_lm, '#ff9900', '左后视镜', 0.6)
         # plot_hull(az_rm, el_rm, '#32cd32', '右后视镜', 0.6)
         plot_hull(az_lw, el_lw, "#a03b00", '左侧窗', 0.4)
         plot_hull(az_rw, el_rw, '#a03b00', '右侧窗', 0.4)
-        lines = [Line2D([-50, -50], [90, -30]),Line2D([-50, 50], [-30, -30]),Line2D([50, 50], [-30, 90])]  # 创建垂直线
-        for line in lines:
-            line.set_color('r')
-            self.ax2.add_line(line)
+        
+        
+        ######## 强标线 ########
+        # lines = [Line2D([-50, -50], [90, -30]),Line2D([-50, 50], [-30, -30]),Line2D([50, 50], [-30, 90])]  # 创建垂直线
+        # for line in lines:
+        #     line.set_color('r')
+        #     self.ax2.add_line(line)
         # line = Line2D([-50, -50], [-30, 30])  # 创建垂直线
         # self.ax2.add_line(line) 
         self.ax2.legend(fontsize=9, facecolor='#0f3460', labelcolor='white', loc='upper right')
@@ -280,6 +296,7 @@ class InteractiveFOVViewer:
         self.fig.canvas.draw_idle()
 
     def _reset(self, event):
+        self.slider_x.reset()
         self.slider_y.reset()
         self.slider_z.reset()
 
